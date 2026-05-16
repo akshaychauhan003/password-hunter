@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: password-hunter-backend
+  
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/password-hunter
+      auto-index-creation: true
+  
+  redis:
+    host: localhost
+    port: 6379
+    timeout: 60000ms
+    jedis:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    root: INFO
+    com.passwordhunter: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

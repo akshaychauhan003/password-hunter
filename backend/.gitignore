@@ -1,0 +1,21 @@
+# Maven
+target/
+*.jar
+*.war
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+.env
+.env.local
+
+# Spring Boot
+logs/
+*.log
