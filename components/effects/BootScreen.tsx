@@ -30,6 +30,13 @@ interface BootScreenProps {
   onComplete: () => void;
 }
 
+function lineClass(line: string): string {
+  if (line.includes('READY')) return 'boot-line-ready';
+  if (line.includes('VERIFIED') || line.includes('[OK]')) return 'boot-line-ok';
+  if (line.includes('billion')) return 'boot-line-dim';
+  return 'boot-line-default';
+}
+
 export default function BootScreen({ onComplete }: BootScreenProps) {
   const [lines, setLines] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
@@ -38,30 +45,32 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
   const sound = useSound();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Blink cursor
   useEffect(() => {
     const t = setInterval(() => setShowCursor(v => !v), 500);
     return () => clearInterval(t);
   }, []);
 
-  // Schedule boot lines
   useEffect(() => {
     sound.playBoot();
     let cumulative = 400;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     BOOT_LINES.forEach((line, i) => {
       cumulative += line.delay;
-      setTimeout(() => {
+      timers.push(setTimeout(() => {
         setLines(prev => [...prev, line.text]);
         setProgress(Math.round(((i + 1) / BOOT_LINES.length) * 100));
         sound.playTypingTick();
         containerRef.current?.scrollTo({ top: 9999, behavior: 'smooth' });
-      }, cumulative);
+      }, cumulative));
     });
-    // Transition after all lines
-    setTimeout(() => {
+
+    timers.push(setTimeout(() => {
       setDone(true);
-      setTimeout(onComplete, 800);
-    }, cumulative + 1200);
+      timers.push(setTimeout(onComplete, 800));
+    }, cumulative + 1200));
+
+    return () => timers.forEach(clearTimeout);
   }, []); // eslint-disable-line
 
   return (
@@ -72,66 +81,68 @@ export default function BootScreen({ onComplete }: BootScreenProps) {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8 }}
-          className="fixed inset-0 z-50 bg-black retro-flicker flex flex-col"
+          className="boot-screen fixed inset-0 z-50 retro-flicker flex flex-col"
         >
-          {/* CRT scanlines */}
-          <div className="pointer-events-none absolute inset-0 z-10"
-            style={{ background: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px)' }} />
-
-          {/* Screen vignette */}
-          <div className="pointer-events-none absolute inset-0 z-10"
-            style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%)' }} />
+          <motion.div
+            className="pointer-events-none absolute inset-0 z-10 boot-scanlines"
+            aria-hidden
+          />
+          <motion.div
+            className="pointer-events-none absolute inset-0 z-10"
+            style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%)' }}
+            aria-hidden
+          />
 
           <div className="relative z-20 flex flex-col h-full p-6 md:p-10 max-w-3xl mx-auto w-full">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-4 border-b border-green-500/30 pb-3">
-              <span className="text-green-400 text-xs font-mono font-bold tracking-widest">
+            <div
+              className="flex justify-between items-center mb-4 pb-3"
+              style={{ borderBottom: '1px solid var(--theme-border)' }}
+            >
+              <span className="text-xs font-mono font-bold tracking-widest boot-header-primary">
                 PASSWORD HUNTER OS v1.0.0
               </span>
-              <span className="text-green-300/60 text-xs font-mono">[SECURE BOOT]</span>
+              <span className="text-xs font-mono boot-header-muted">[SECURE BOOT]</span>
             </div>
 
-            {/* Boot log */}
-            <div ref={containerRef}
+            <div
+              ref={containerRef}
               className="flex-1 overflow-y-auto terminal-scroll"
-              style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              style={{ maxHeight: 'calc(100vh - 200px)' }}
+            >
               {lines.map((line, i) => (
                 <motion.p
                   key={i}
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.15 }}
-                  className={`font-mono text-sm leading-6 whitespace-pre ${
-                    line.includes('READY') ? 'text-cyan-300 font-bold' :
-                    line.includes('VERIFIED') || line.includes('[OK]') ? 'text-green-300' :
-                    line.includes('billion') ? 'text-green-200/70' :
-                    'text-green-500'
-                  }`}
+                  className={`font-mono text-sm leading-6 whitespace-pre ${lineClass(line)}`}
                 >
                   {line}
                 </motion.p>
               ))}
-              {/* Blinking cursor */}
-              <span className="font-mono text-green-400 text-sm">
+              <span className="font-mono text-sm boot-cursor">
                 {showCursor ? '█' : ' '}
               </span>
             </div>
 
-            {/* Progress bar */}
-            <div className="mt-4 border-t border-green-500/20 pt-4">
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--theme-border)' }}>
               <div className="flex justify-between mb-2">
-                <span className="text-green-500/70 text-xs font-mono tracking-widest">LOADING SYSTEM...</span>
-                <span className="text-cyan-400 text-xs font-mono font-bold">{progress}%</span>
+                <span className="text-xs font-mono tracking-widest boot-header-muted">
+                  LOADING SYSTEM...
+                </span>
+                <span className="text-xs font-mono font-bold boot-line-ready">{progress}%</span>
               </div>
-              <div className="w-full h-1 bg-green-900/30 rounded overflow-hidden">
+              <div
+                className="w-full h-1 rounded overflow-hidden"
+                style={{ background: 'var(--theme-primary-faint)' }}
+              >
                 <motion.div
-                  className="h-full bg-green-400 rounded"
-                  style={{ boxShadow: '0 0 8px #00FF41' }}
+                  className="h-full rounded boot-progress-fill"
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 0.15, ease: 'linear' }}
                 />
               </div>
-              <p className="text-green-900/60 text-[9px] font-mono text-center mt-3 tracking-widest">
+              <p className="text-[9px] font-mono text-center mt-3 tracking-widest boot-footer">
                 © 2024 PASSWORD HUNTER — EDUCATIONAL USE ONLY
               </p>
             </div>

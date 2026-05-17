@@ -5,11 +5,12 @@ Complete guide for deploying Password Hunter to production environments.
 ## Table of Contents
 
 1. [Local Development](#local-development)
-2. [Docker Deployment](#docker-deployment)
-3. [Cloud Deployment](#cloud-deployment)
-4. [Kubernetes Deployment](#kubernetes-deployment)
-5. [Monitoring & Logging](#monitoring--logging)
-6. [Rollback & Recovery](#rollback--recovery)
+2. [Android APK Distribution](#android-apk-distribution)
+3. [Docker Deployment](#docker-deployment)
+4. [Cloud Deployment](#cloud-deployment)
+5. [Kubernetes Deployment](#kubernetes-deployment)
+6. [Monitoring & Logging](#monitoring--logging)
+7. [Rollback & Recovery](#rollback--recovery)
 
 ## Local Development
 
@@ -56,6 +57,126 @@ Complete guide for deploying Password Hunter to production environments.
    cd android
    # Open in Android Studio and run on emulator/device
    ```
+
+## Android APK Distribution
+
+The project includes an automated system to build, distribute, and serve the Android APK to users without manual intervention.
+
+### Overview
+
+- **Automated Build:** Gradle automatically builds and copies APK to `public/downloads/`
+- **Frontend Detection:** Frontend checks for APK availability and shows appropriate UI
+- **CI/CD Pipeline:** GitHub Actions automatically builds on push/PR
+- **User-Friendly:** No technical messages exposed to end users
+
+### Local Build (Development)
+
+**Build and Deploy APK:**
+```bash
+# Using npm script
+npm run android:build
+
+# Or using bash script directly
+./scripts/build-android.sh
+
+# Debug build
+npm run android:build:debug
+
+# Skip tests
+npm run android:build:skip-tests
+```
+
+**Verify APK:**
+```bash
+ls -lh public/downloads/password-hunter.apk
+# Should show the built APK file
+```
+
+### Automated CI/CD (GitHub Actions)
+
+The `.github/workflows/android-apk-build.yml` workflow automatically:
+
+1. **Triggers** on push to `main`/`develop` or when Android files change
+2. **Builds** release APK with Gradle
+3. **Verifies** APK was copied to `public/downloads/`
+4. **Publishes** to GitHub Releases (on main branch)
+5. **Notifies** via Slack (if webhook configured)
+
+**Enable GitHub Actions:**
+- Check: `Settings → Actions → General → Allow Actions`
+- Optional: Add Slack webhook in `Settings → Secrets`
+  - Secret name: `SLACK_WEBHOOK`
+  - Value: Your Slack webhook URL
+
+### Production Deployment
+
+**Before deployment, ensure:**
+1. APK is built and present at `public/downloads/password-hunter.apk`
+2. Frontend can reach the APK URL
+3. Download directory is readable by web server
+
+**Deployment Checklist:**
+```bash
+# 1. Build APK locally
+npm run android:build
+
+# 2. Verify file exists
+test -f public/downloads/password-hunter.apk && echo "✓ APK ready"
+
+# 3. Deploy frontend (as usual)
+npm run build && npm start
+
+# 4. Test download link
+curl -I https://yourdomain.com/downloads/password-hunter.apk
+# Should return 200 OK
+```
+
+### Frontend Integration
+
+The frontend automatically:
+- Detects if APK exists at `/downloads/password-hunter.apk`
+- Shows download button if available
+- Shows user-friendly message if unavailable
+- Displays installation instructions
+
+**No configuration needed** - just deploy!
+
+### Troubleshooting
+
+**APK not downloading?**
+```bash
+# Check if file exists
+ls -lh public/downloads/password-hunter.apk
+
+# Check file permissions
+chmod 644 public/downloads/password-hunter.apk
+
+# Verify web server can serve it
+curl -I http://localhost:3000/downloads/password-hunter.apk
+```
+
+**Build failed?**
+```bash
+# Check Java installation
+java -version
+
+# Check Android SDK
+$ANDROID_HOME  # Should be set
+
+# Run build with verbose output
+./scripts/build-android.sh
+```
+
+**GitHub Actions not triggering?**
+```bash
+# Enable Actions in repository settings
+# Then push to trigger workflow
+git push origin main
+```
+
+**More help:**
+- See `ANDROID_BUILD.md` for detailed Android documentation
+- Check `.github/workflows/android-apk-build.yml` for CI/CD config
 
 ## Docker Deployment
 

@@ -33,13 +33,15 @@ export default function TerminalConsole({ logs, className = '' }: TerminalConsol
   }, [logs.length]);
 
   return (
-    <div className={`bg-bg-terminal rounded-xl border border-neon-green/10 overflow-hidden ${className}`}>
+    <div className={`rounded-xl border overflow-hidden ${className}`}
+      style={{ background: 'var(--theme-bg-terminal)', borderColor: 'var(--theme-border)' }}>
       {/* Header bar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-neon-green/10 bg-black/30">
+      <div className="flex items-center gap-2 px-4 py-2 border-b bg-black/30"
+        style={{ borderColor: 'var(--theme-border)' }}>
         <div className="w-3 h-3 rounded-full bg-neon-red/70" />
         <div className="w-3 h-3 rounded-full bg-neon-amber/70" />
         <div className="w-3 h-3 rounded-full bg-neon-green/70" />
-        <span className="ml-2 text-[10px] font-mono text-neon-cyan/40 tracking-widest uppercase">
+        <span className="ml-2 text-[10px] font-mono theme-secondary-text opacity-50 tracking-widest uppercase">
           TERMINAL LOG — PASSWORD_HUNTER.EXE
         </span>
       </div>
@@ -52,7 +54,7 @@ export default function TerminalConsole({ logs, className = '' }: TerminalConsol
         {logs.map(entry => (
           <div key={entry.id} className="flex items-start gap-2">
             <div className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${TYPE_DOT[entry.type]}`} />
-            <span className={`leading-5 break-all ${TYPE_COLORS[entry.type]}`}>
+            <span className={`leading-5 break-all whitespace-break-spaces ${TYPE_COLORS[entry.type]}`}>
               {entry.text}
             </span>
           </div>

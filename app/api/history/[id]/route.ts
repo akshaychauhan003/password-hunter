@@ -1,21 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, HistoryModel } from '@/lib/mongodb';
-import { cacheDelPattern } from '@/lib/redis';
+import { clearMemHistory, deleteMemHistoryItem } from '@/lib/historyStore';
+
+async function tryMongoDB() {
+  try {
+    const { connectDB, HistoryModel } = await import('@/lib/mongodb');
+    await connectDB();
+    return HistoryModel;
+  } catch {
+    return null;
+  }
+}
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  try {
-    await connectDB();
-    if (params.id === 'all') {
-      await HistoryModel.deleteMany({ userId: 'anonymous' });
-    } else {
-      await HistoryModel.findByIdAndDelete(params.id);
-    }
-    await cacheDelPattern('history:anonymous:*');
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Delete failed' }, { status: 500 });
+  const { id } = params;
+
+  const Model = await tryMongoDB();
+  if (Model) {
+    try {
+      if (id === 'all') {
+        await Model.deleteMany({ userId: 'anonymous' });
+      } else {
+        await Model.findByIdAndDelete(id);
+      }
+      return NextResponse.json({ success: true });
+    } catch { /* fall through */ }
   }
+
+  if (id === 'all') {
+    clearMemHistory('anonymous');
+  } else {
+    deleteMemHistoryItem(id);
+  }
+
+  return NextResponse.json({ success: true });
 }

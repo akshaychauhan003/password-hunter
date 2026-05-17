@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default: HACKER GREEN (first launch) -->
+    <color name="splash_background">#050A0E</color>
+    <color name="primary_green">#00FF41</color>
+</resources>

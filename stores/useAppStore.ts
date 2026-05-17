@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppSettings, ThemeName, SimSpeed, CharsetMode } from '@/types';
+import { applyThemeVars, DEFAULT_THEME } from '@/lib/theme';
 
 interface AppStore extends AppSettings {
   setTheme: (t: ThemeName) => void;
@@ -15,13 +16,13 @@ interface AppStore extends AppSettings {
 }
 
 const defaults: AppSettings = {
-  theme: 'hacker-green',
+  theme: DEFAULT_THEME,
   soundEnabled: true,
   volume: 40,
   animationIntensity: 70,
   particlesEnabled: true,
   simSpeed: 'normal',
-  charsetMode: 'alphanumeric',
+  charsetMode: 'full',
   customCharset: 'abc123!@#',
 };
 
@@ -29,7 +30,10 @@ export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({
       ...defaults,
-      setTheme:              (theme)              => set({ theme }),
+      setTheme: (theme) => {
+        applyThemeVars(theme);
+        set({ theme });
+      },
       setSoundEnabled:       (soundEnabled)        => set({ soundEnabled }),
       setVolume:             (volume)              => set({ volume }),
       setAnimationIntensity: (animationIntensity)  => set({ animationIntensity }),
@@ -37,8 +41,26 @@ export const useAppStore = create<AppStore>()(
       setSimSpeed:           (simSpeed)            => set({ simSpeed }),
       setCharsetMode:        (charsetMode)         => set({ charsetMode }),
       setCustomCharset:      (customCharset)       => set({ customCharset }),
-      resetDefaults:         ()                    => set(defaults),
+      resetDefaults:         () => {
+        applyThemeVars(DEFAULT_THEME);
+        set(defaults);
+      },
     }),
-    { name: 'password-hunter-settings' }
+    {
+      name: 'password-hunter-settings',
+      partialize: (state) => ({
+        theme: state.theme,
+        soundEnabled: state.soundEnabled,
+        volume: state.volume,
+        animationIntensity: state.animationIntensity,
+        particlesEnabled: state.particlesEnabled,
+        simSpeed: state.simSpeed,
+        charsetMode: state.charsetMode,
+        customCharset: state.customCharset,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.theme) applyThemeVars(state.theme);
+      },
+    }
   )
 );

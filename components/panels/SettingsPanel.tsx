@@ -2,7 +2,8 @@
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/stores/useAppStore';
 import { CyberButton } from '@/components/ui/CyberUI';
-import type { ThemeName, SimSpeed, CharsetMode } from '@/types';
+import type { SimSpeed, CharsetMode } from '@/types';
+import { THEME_IDS, THEME_LABELS } from '@/lib/theme';
 
 interface Props { onClose: () => void; }
 
@@ -17,19 +18,19 @@ export default function SettingsPanel({ onClose }: Props) {
         className="glass-card rounded-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto terminal-scroll">
 
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-neon-green font-mono font-bold tracking-widest text-sm">⚙ SYSTEM SETTINGS</h2>
+          <h2 className="theme-primary-text font-mono font-bold tracking-widest text-sm">⚙ SYSTEM SETTINGS</h2>
           <CyberButton variant="ghost" size="sm" onClick={onClose}>✕</CyberButton>
         </div>
 
         <div className="space-y-6">
           {/* Theme */}
           <div>
-            <label className="text-[10px] font-mono text-neon-cyan/60 tracking-widest uppercase mb-2 block">Theme</label>
+            <label className="text-[10px] font-mono theme-secondary-text opacity-60 tracking-widest uppercase mb-2 block">Theme</label>
             <div className="grid grid-cols-2 gap-2">
-              {(['hacker-green','cyber-blue','neon-purple','red-matrix'] as ThemeName[]).map(t => (
+              {THEME_IDS.map(t => (
                 <button key={t} onClick={() => store.setTheme(t)}
-                  className={`py-2 px-3 rounded-lg border font-mono text-xs tracking-wider transition-all ${store.theme === t ? 'border-neon-green text-neon-green bg-neon-green/10' : 'border-white/10 text-white/40 hover:border-white/30'}`}>
-                  {t.replace('-',' ').toUpperCase()}
+                  className={`py-2 px-3 rounded-lg border font-mono text-xs tracking-wider transition-all ${store.theme === t ? 'btn-theme-active' : 'border-white/10 text-white/40 hover:border-white/30'}`}>
+                  {THEME_LABELS[t]}
                 </button>
               ))}
             </div>

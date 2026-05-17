@@ -2,8 +2,10 @@ package com.passwordhunter.mobile.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -16,11 +18,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.passwordhunter.mobile.theme.CyberThemeColors
+import com.passwordhunter.mobile.theme.CyberThemeId
 import com.passwordhunter.mobile.viewmodel.PasswordAnalysisViewModel
 
 @Composable
 fun PasswordAnalysisScreen(
-    viewModel: PasswordAnalysisViewModel = viewModel()
+    colors: CyberThemeColors,
+    currentTheme: CyberThemeId,
+    onThemeChange: (CyberThemeId) -> Unit,
+    viewModel: PasswordAnalysisViewModel = viewModel(),
 ) {
     val password by viewModel.password.collectAsState()
     val analysis by viewModel.analysis.collectAsState()
@@ -30,168 +37,147 @@ fun PasswordAnalysisScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0E27))
+            .background(colors.background)
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Header
         Text(
             "PASSWORD HUNTER",
             style = MaterialTheme.typography.headlineLarge.copy(
                 fontFamily = FontFamily.Monospace,
-                color = Color(0xFF00FF41),
-                fontSize = 24.sp
+                color = colors.primary,
+                fontSize = 24.sp,
             ),
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(bottom = 8.dp),
         )
 
-        // Input Section
-        OutlinedTextField(
-            value = password,
-            onValueChange = viewModel::updatePassword,
-            label = { Text("Enter Password", color = Color(0xFF00FF41)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0xFF00FF41), shape = MaterialTheme.shapes.small),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = FontFamily.Monospace,
-                color = Color(0xFF00FF41)
-            ),
-            enabled = !isLoading,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        Text(
+            "CYBER BRUTE-FORCE SIMULATOR",
+            color = colors.textMuted,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 16.dp),
+        )
+
+        ThemeSelector(
+            colors = colors,
+            currentTheme = currentTheme,
+            onThemeChange = onThemeChange,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Analyze Button
+        OutlinedTextField(
+            value = password,
+            onValueChange = viewModel::updatePassword,
+            label = { Text("Enter Password", color = colors.primary) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.border, shape = RoundedCornerShape(8.dp)),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = FontFamily.Monospace,
+                color = colors.primary,
+            ),
+            enabled = !isLoading,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.primary,
+                unfocusedBorderColor = colors.border,
+                cursorColor = colors.primary,
+                focusedLabelColor = colors.primary,
+                unfocusedLabelColor = colors.primaryMuted,
+            ),
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Button(
             onClick = { viewModel.analyzePassword() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF00FF41),
-                contentColor = Color(0xFF0A0E27)
+                containerColor = colors.primary,
+                contentColor = colors.background,
             ),
-            enabled = password.isNotEmpty() && !isLoading
+            enabled = password.isNotEmpty() && !isLoading,
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    color = Color(0xFF0A0E27),
-                    modifier = Modifier.size(24.dp)
+                    color = colors.background,
+                    modifier = Modifier.size(24.dp),
                 )
             } else {
                 Text("ANALYZE", fontFamily = FontFamily.Monospace)
             }
         }
 
-        // Error Message
         if (error != null) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFF4444))
+                colors = CardDefaults.cardColors(containerColor = colors.danger),
             ) {
                 Text(
                     error!!,
                     modifier = Modifier.padding(12.dp),
                     color = Color.White,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
                 )
             }
         }
 
-        // Results Section
         if (analysis != null) {
             Spacer(modifier = Modifier.height(24.dp))
-            AnalysisResultsCard(analysis!!)
+            AnalysisResultsCard(analysis!!, colors)
         }
     }
 }
 
 @Composable
-fun AnalysisResultsCard(analysis: com.passwordhunter.mobile.network.PasswordAnalysis) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF00FF41), shape = MaterialTheme.shapes.medium),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1F3A))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Score
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Strength:", fontFamily = FontFamily.Monospace, color = Color(0xFF00FF41))
-                Text(
-                    analysis.label,
-                    fontFamily = FontFamily.Monospace,
-                    color = getDifficultyColor(analysis.difficultyLevel)
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Score:", fontFamily = FontFamily.Monospace, color = Color(0xFF00FF41))
-                Text(
-                    "${analysis.score}/100",
-                    fontFamily = FontFamily.Monospace,
-                    color = Color.White
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Entropy:", fontFamily = FontFamily.Monospace, color = Color(0xFF00FF41))
-                Text(
-                    String.format("%.2f", analysis.entropy),
-                    fontFamily = FontFamily.Monospace,
-                    color = Color.White
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Crack Time:", fontFamily = FontFamily.Monospace, color = Color(0xFF00FF41))
-                Text(
-                    analysis.crackTimeDisplay,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFFFF6B6B)
-                )
-            }
-
-            // Weaknesses
-            if (analysis.weaknesses.isNotEmpty()) {
-                Text(
-                    "Weaknesses:",
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFFFFAA00),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                analysis.weaknesses.forEach {
+private fun ThemeSelector(
+    colors: CyberThemeColors,
+    currentTheme: CyberThemeId,
+    onThemeChange: (CyberThemeId) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "THEME",
+            color = colors.primaryMuted,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            CyberThemeId.entries.forEach { theme ->
+                val selected = theme == currentTheme
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(
+                            width = 1.dp,
+                            color = if (selected) colors.primary else colors.border,
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        .background(
+                            if (selected) colors.primaryFaint else Color.Transparent,
+                            RoundedCornerShape(8.dp),
+                        )
+                        .clickable { onThemeChange(theme) }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        "• $it",
+                        text = theme.label.split(" ").first(),
+                        color = if (selected) colors.primary else colors.textMuted,
                         fontFamily = FontFamily.Monospace,
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 2.dp)
+                        fontSize = 8.sp,
+                        maxLines = 1,
                     )
                 }
             }
@@ -199,11 +185,67 @@ fun AnalysisResultsCard(analysis: com.passwordhunter.mobile.network.PasswordAnal
     }
 }
 
-fun getDifficultyColor(difficulty: String): Color = when (difficulty) {
-    "Easy" -> Color(0xFF00FF41)
-    "Medium" -> Color(0xFFFFAA00)
+@Composable
+fun AnalysisResultsCard(
+    analysis: com.passwordhunter.mobile.network.PasswordAnalysis,
+    colors: CyberThemeColors,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border, shape = RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = colors.backgroundCard),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            ResultRow("Strength:", analysis.label, getDifficultyColor(analysis.difficultyLevel, colors), colors)
+            ResultRow("Score:", "${analysis.score}/100", Color.White, colors)
+            ResultRow("Entropy:", String.format("%.2f", analysis.entropy), Color.White, colors)
+            ResultRow("Crack Time:", analysis.crackTimeDisplay, colors.danger, colors)
+
+            if (analysis.weaknesses.isNotEmpty()) {
+                Text(
+                    "Weaknesses:",
+                    fontFamily = FontFamily.Monospace,
+                    color = colors.accent,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                )
+                analysis.weaknesses.forEach {
+                    Text(
+                        "• $it",
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultRow(
+    label: String,
+    value: String,
+    valueColor: Color,
+    colors: CyberThemeColors,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, fontFamily = FontFamily.Monospace, color = colors.primary)
+        Text(value, fontFamily = FontFamily.Monospace, color = valueColor)
+    }
+}
+
+fun getDifficultyColor(difficulty: String, colors: CyberThemeColors): Color = when (difficulty) {
+    "Easy" -> colors.primary
+    "Medium" -> colors.accent
     "Hard" -> Color(0xFFFF6B35)
-    "Extreme" -> Color(0xFFFF4444)
-    "Impossible" -> Color(0xFFAA00FF)
+    "Extreme" -> colors.danger
+    "Impossible" -> colors.secondary
     else -> Color.White
 }

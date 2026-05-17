@@ -1,37 +1,57 @@
 'use client';
 import { useState, useRef, useCallback } from 'react';
 import { useSound } from '@/hooks/useSound';
-import { getCharset, calcDifficultyScore, getDifficultyFromScore, getEstimatedCrackTime, maskPassword } from '@/lib/passwordAnalyzer';
+import {
+  calcDifficultyScore,
+  getDifficultyFromScore,
+  getEstimatedCrackTime,
+  maskPassword,
+} from '@/lib/passwordAnalyzer';
+import {
+  buildBruteForcePlan,
+  buildDisplayString,
+  positionAtAttempt,
+  batchSizeForSpeed,
+  estimateDiscoveryMs,
+  formatSimMs,
+  TICK_MS,
+  SPEED_APS,
+  VISUAL_STEP,
+} from '@/lib/bruteForce';
 import type { SimulationState, TerminalEntry, CharsetMode, SimSpeed } from '@/types';
+import type { BruteForcePlan } from '@/lib/bruteForce';
 import { nanoid } from 'nanoid';
-
-const SPEED_MAP: Record<SimSpeed, number> = {
-  slow: 80, normal: 400, fast: 2000, instant: 0,
-};
-
-const SIM_DURATION_MAP: Record<SimSpeed, number> = {
-  slow: 14000, normal: 14000, fast: 14000, instant: 1500,
-};
-
-// Fixed constants for display
-const FIXED_ATTEMPTS = 12_000_000;
-const FIXED_DISPLAY_TIME = 14000;
 
 export function useSimulation() {
   const sound = useSound();
-  const runningRef  = useRef(false);
-  const pausedRef   = useRef(false);
-  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startTimeRef = useRef(0);
-  const attemptRef  = useRef(0);
+  const runningRef     = useRef(false);
+  const pausedRef      = useRef(false);
+  const timerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bootTimersRef  = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const startTimeRef   = useRef(0);
+  const pauseAccRef    = useRef(0);
+  const pauseStartRef  = useRef(0);
+  const attemptRef     = useRef(0);
+  const lastPosRef     = useRef(0); // number of locked positions already logged
+  const visualCursorRef = useRef(0);
+  const lastLockedRef   = useRef(0);
 
   const [state, setState] = useState<SimulationState>({
     isRunning: false, isPaused: false, isComplete: false, found: false,
-    currentAttempt: '', attemptCount: 0, attemptsPerSecond: 0,
+    currentAttempt: '', activeIndex: 0, attemptCount: 0, attemptsPerSecond: 0,
     elapsedMs: 0, progress: 0, estimatedTimeLeft: '—',
-    target: '', charset: '', mode: 'alphanumeric', speed: 'normal',
+    target: '', charset: '', mode: 'full', speed: 'normal',
   });
   const [logs, setLogs] = useState<TerminalEntry[]>([]);
+
+  const clearTimers = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    bootTimersRef.current.forEach(clearTimeout);
+    bootTimersRef.current = [];
+  }, []);
 
   const addLog = useCallback((text: string, type: TerminalEntry['type'] = 'info') => {
     setLogs(prev => {
@@ -40,203 +60,268 @@ export function useSimulation() {
     });
   }, []);
 
-  const randomChar = (charset: string) => charset[Math.floor(Math.random() * charset.length)];
-
-  const buildRevealSchedule = useCallback((target: string, charset: string): string[] => {
-    const schedule: string[] = [];
-    // Build array: each entry reveals one more correct char from left
-    for (let i = 0; i <= target.length; i++) {
-      let s = target.slice(0, i);
-      for (let j = i; j < target.length; j++) s += randomChar(charset);
-      schedule.push(s);
-    }
-    return schedule;
-  }, []);
-
-  const formatMs = (ms: number): string => {
-    if (ms < 1000) return `${ms}ms`;
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    if (m > 0) return `${m}m ${s % 60}s`;
-    return `${s}.${String(ms % 1000).padStart(3,'0').slice(0,2)}s`;
-  };
-
-  const start = useCallback((target: string, mode: CharsetMode, speed: SimSpeed, customCharset?: string) => {
+  const start = useCallback((
+    target: string,
+    mode: CharsetMode,
+    speed: SimSpeed,
+    customCharset?: string,
+  ) => {
     if (!target) return;
-    runningRef.current  = true;
-    pausedRef.current   = false;
+
+    clearTimers();
+
+    const plan = buildBruteForcePlan(target, mode, customCharset);
+    const { charset, charsetSize, totalAttempts, entropy, feasible } = plan;
+
+    if (!feasible) {
+      addLog('⛔ Target contains characters outside the selected charset.', 'error');
+      addLog(`▶ Mode: ${mode.toUpperCase()} — charset: [${charset.slice(0, 30)}${charset.length > 30 ? '…' : ''}]`, 'warning');
+      addLog('▶ Switch to FULL mode or add missing characters to Custom.', 'warning');
+      return;
+    }
+
+    const estMs = estimateDiscoveryMs(totalAttempts, speed);
+    const batch = batchSizeForSpeed(speed);
+
+    runningRef.current   = true;
+    pausedRef.current    = false;
+    pauseAccRef.current  = 0;
+    attemptRef.current   = 0;
+    lastPosRef.current   = 0;
+    lastLockedRef.current = 0;
+    visualCursorRef.current = 0;
     startTimeRef.current = Date.now();
-    attemptRef.current  = 0;
 
-    const charset = mode === 'custom' && customCharset ? customCharset : getCharset(mode);
     setLogs([]);
-
     setState({
       isRunning: true, isPaused: false, isComplete: false, found: false,
-      currentAttempt: '', attemptCount: 0, attemptsPerSecond: 0,
-      elapsedMs: 0, progress: 0, estimatedTimeLeft: '—',
+      currentAttempt: '', activeIndex: 0, attemptCount: 0, attemptsPerSecond: 0,
+      elapsedMs: 0, progress: 0, estimatedTimeLeft: formatSimMs(estMs),
       target, charset, mode, speed,
     });
 
-    // Boot logs
+    // ── Boot logs ──
     const bootLogs = [
       { text: '▶ Initializing brute-force engine...', type: 'system' as const },
-      { text: `▶ Target length: ${target.length} characters`, type: 'info' as const },
-      { text: `▶ Character set: [${charset.slice(0,20)}${charset.length > 20 ? '...' : ''}] (${charset.length} chars)`, type: 'info' as const },
-      { text: `▶ Attack mode: ${mode.toUpperCase()}`, type: 'system' as const },
-      { text: `▶ Speed profile: ${speed.toUpperCase()}`, type: 'info' as const },
-      { text: '▶ Starting sequential attack...', type: 'system' as const },
+      { text: `▶ Target length: ${target.length} chars`, type: 'info' as const },
+      { text: `▶ Charset: [${charset.slice(0, 20)}${charset.length > 20 ? '…' : ''}] (${charsetSize} chars)`, type: 'info' as const },
+      { text: `▶ Entropy: ${entropy.toFixed(1)} bits`, type: 'info' as const },
+      { text: `▶ Attack: INDEX-BY-INDEX (sequential per position)`, type: 'system' as const },
+      { text: `▶ Mode: ${mode.toUpperCase()} · Speed: ${speed.toUpperCase()} (~${SPEED_APS[speed].toLocaleString()}/s)`, type: 'info' as const },
+      { text: `▶ Est. total attempts: ${totalAttempts.toLocaleString()} across ${target.length} positions`, type: 'info' as const },
+      { text: '▶ Starting index-by-index attack...', type: 'system' as const },
     ];
 
     let bootDelay = 0;
     bootLogs.forEach(({ text, type }) => {
-      bootDelay += 200;
-      setTimeout(() => { if (runningRef.current) addLog(text, type); }, bootDelay);
+      bootDelay += 120;
+      const id = setTimeout(() => {
+        if (runningRef.current) addLog(text, type);
+      }, bootDelay);
+      bootTimersRef.current.push(id);
     });
 
-    // Simulation
-    const totalMs   = SIM_DURATION_MAP[speed];
-    const revealSchedule = buildRevealSchedule(target, charset);
-    const revealInterval = totalMs / Math.max(revealSchedule.length, 1);
+    let lastSpeedCheckTime  = Date.now();
+    let lastSpeedCheckCount = 0;
 
-    const warnings = [
-      '⚠ Hash collision attempt detected...',
-      '⚠ Entropy increasing — adjusting vector...',
-      '⚠ Pattern match probability rising...',
-      '⚠ Firewall evasion layer active...',
-      '⚠ Match confidence: INCREASING...',
-      '⚠ GPU cluster at full capacity...',
-    ];
-    let warnIdx = 0;
-    let nextWarnDelay = 3000 + Math.random() * 2000;
-    let lastSpeedCheck = Date.now();
-    let lastCount = 0;
-    let revealIdx = 0;
-
-    const tick = () => {
+    // ── Finish handler ──
+    const finishSuccess = (matchAttempt: number, elapsedMs: number) => {
       if (!runningRef.current) return;
-      if (pausedRef.current) { timerRef.current = setTimeout(tick, 100); return; }
+      runningRef.current = false;
+      clearTimers();
 
-      const now = Date.now();
-      const elapsed = now - startTimeRef.current - bootDelay;
-      if (elapsed < 0) { timerRef.current = setTimeout(tick, 50); return; }
+      addLog('', 'info');
+      addLog('█████████████████████████████████████', 'success');
+      addLog(`✅  PASSWORD FOUND: [${target}]`, 'success');
+      addLog('█████████████████████████████████████', 'success');
+      addLog(`▶ Total attempts: ${matchAttempt.toLocaleString()}`, 'info');
+      addLog(`▶ Positions cracked: ${target.length}`, 'info');
+      addLog(`▶ Time elapsed: ${formatSimMs(elapsedMs)}`, 'info');
+      addLog(`▶ Charset size: ${charsetSize} characters`, 'info');
+      addLog(`▶ Entropy: ${entropy.toFixed(1)} bits`, 'info');
+      sound.playSuccess();
 
-      const progress = Math.min(elapsed / totalMs, 0.999);
-      const attempts  = Math.floor(progress * progress * FIXED_ATTEMPTS);
-      attemptRef.current = attempts;
+      const diffScore = calcDifficultyScore(target, charsetSize);
 
-      // Reveal schedule
-      revealIdx = Math.min(Math.floor(elapsed / revealInterval), revealSchedule.length - 1);
-      const baseAttempt = revealSchedule[revealIdx];
-      // Jitter the unrevealed suffix
-      let attempt = baseAttempt.slice(0, revealIdx);
-      for (let i = revealIdx; i < target.length; i++) {
-        attempt += Math.random() < 0.2 ? target[i] : randomChar(charset);
-      }
-
-      // APS
-      const secDiff = (now - lastSpeedCheck) / 1000;
-      const aps = secDiff > 0.5 ? (attempts - lastCount) / secDiff : 0;
-      if (secDiff > 0.5) { lastSpeedCheck = now; lastCount = attempts; }
-
-      const remainMs = Math.max(0, totalMs - elapsed);
-      setState(s => ({ ...s,
-        currentAttempt: attempt,
-        attemptCount: attempts,
-        attemptsPerSecond: Math.round(aps),
-        elapsedMs: elapsed,
-        progress,
-        estimatedTimeLeft: formatMs(remainMs),
+      setState(s => ({
+        ...s,
+        isRunning: false,
+        isComplete: true,
+        found: true,
+        currentAttempt: target,
+        activeIndex: plan.indices.length,
+        attemptCount: matchAttempt,
+        elapsedMs,
+        progress: 1,
+        estimatedTimeLeft: '0ms',
+        attemptsPerSecond: elapsedMs > 0
+          ? Math.round((matchAttempt / elapsedMs) * 1000)
+          : matchAttempt,
       }));
 
-      // Log attempt occasionally
-      if (Math.random() < 0.08) addLog(`> ${attempt}`, 'attempt');
+      // Save to history
+      fetch('/api/history', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          target,
+          maskedTarget:       maskPassword(target),
+          totalAttempts:      matchAttempt,
+          timeTakenMs:        Math.round(elapsedMs),
+          modeUsed:           mode,
+          difficultyLabel:    getDifficultyFromScore(diffScore),
+          difficultyScore:    diffScore,
+          estimatedCrackTime: getEstimatedCrackTime(charsetSize, target.length),
+          charLength:         target.length,
+          charsetSize,
+          entropy,
+        }),
+      }).catch(() => {});
+    };
 
-      // Warning logs
-      if (elapsed > nextWarnDelay && warnIdx < warnings.length) {
-        addLog(warnings[warnIdx++], 'warning');
-        sound.playWarning();
-        nextWarnDelay = elapsed + 2000 + Math.random() * 3000;
-      }
+    // ── Tick loop ──
+    const tick = () => {
+      if (!runningRef.current) return;
 
-      sound.playSimTick();
-
-      if (elapsed >= totalMs) {
-        // SUCCESS
-        runningRef.current = false;
-        const finalAttempts = FIXED_ATTEMPTS;
-        addLog('', 'info');
-        addLog('█████████████████████████████████████', 'success');
-        addLog(`✅  PASSWORD FOUND: [${target}]`, 'success');
-        addLog('█████████████████████████████████████', 'success');
-        addLog(`▶ Total attempts: ${(finalAttempts / 1_000_000).toFixed(1)}M`, 'info');
-        addLog(`▶ Time elapsed:   14.00s`, 'info');
-        sound.playSuccess();
-
-        const diffScore = calcDifficultyScore(target, charset.length);
-        setState(s => ({
-          ...s, isRunning: false, isComplete: true, found: true,
-          currentAttempt: target, attemptCount: FIXED_ATTEMPTS,
-          progress: 1, estimatedTimeLeft: '0ms',
-        }));
-
-        // Save to DB
-        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
-        fetch(`${apiUrl}/api/history`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            target,
-            maskedTarget: maskPassword(target),
-            totalAttempts: FIXED_ATTEMPTS,
-            timeTakenMs: FIXED_DISPLAY_TIME,
-            modeUsed: mode,
-            difficultyLabel: getDifficultyFromScore(diffScore),
-            difficultyScore: diffScore,
-            estimatedCrackTime: getEstimatedCrackTime(charset.length, target.length),
-            charLength: target.length,
-            charsetSize: charset.length,
-            entropy: target.length * Math.log2(charset.length),
-          }),
-        }).catch(() => {});
+      if (pausedRef.current) {
+        timerRef.current = setTimeout(tick, 100);
         return;
       }
 
-      const interval = speed === 'fast' ? 30 : speed === 'slow' ? 120 : 60;
-      timerRef.current = setTimeout(tick, interval);
+      const now = Date.now();
+      const elapsed = now - startTimeRef.current - pauseAccRef.current - bootDelay;
+      if (elapsed < 0) {
+        timerRef.current = setTimeout(tick, 50);
+        return;
+      }
+
+      const remaining = totalAttempts - attemptRef.current;
+      const steps     = Math.min(batch, remaining);
+
+      for (let i = 0; i < steps; i++) {
+        if (!runningRef.current) return;
+        attemptRef.current += 1;
+      }
+
+      const attempts = attemptRef.current;
+      const { lockedCount, found } = positionAtAttempt(attempts, plan);
+
+      if (lockedCount > lastLockedRef.current) {
+        visualCursorRef.current = 0;
+      }
+      lastLockedRef.current = lockedCount;
+
+      // Log newly cracked positions immediately when they lock.
+      if (lockedCount > lastPosRef.current) {
+        for (let i = lastPosRef.current; i < lockedCount; i++) {
+          const crackedChar = plan.indices[i].targetChar;
+          const posAttempts = plan.indices[i].attemptsForIndex;
+          addLog(
+            `✓ Position ${i + 1}: '${crackedChar}' found after ${posAttempts} attempts`,
+            'success',
+          );
+          sound.playWarning();
+        }
+        lastPosRef.current = lockedCount;
+      }
+
+      // Check for complete
+      if (found || attempts >= totalAttempts) {
+        finishSuccess(totalAttempts, elapsed);
+        return;
+      }
+
+      const progress = Math.min(attempts / totalAttempts, 0.999);
+      const visualCandidate = lockedCount >= plan.indices.length
+        ? ''
+        : speed === 'instant'
+          ? plan.indices[lockedCount].targetChar
+          : plan.charset[visualCursorRef.current] || plan.indices[lockedCount].targetChar;
+
+      if (lockedCount < plan.indices.length && speed !== 'instant') {
+        const visualStep = Math.min(VISUAL_STEP[speed], plan.charset.length);
+        visualCursorRef.current = (visualCursorRef.current + visualStep) % plan.charset.length;
+      }
+
+      const displayStr = buildDisplayString(attempts, plan, {
+        includeCandidate: true,
+        candidateOverride: visualCandidate,
+      });
+      const attemptTrace = buildDisplayString(attempts, plan, {
+        includeCandidate: true,
+        suffixChar: '',
+        candidateOverride: visualCandidate,
+      });
+      const remainMs = Math.max(0, ((totalAttempts - attempts) / SPEED_APS[speed]) * 1000);
+
+      // APS measurement
+      const secDiff = (now - lastSpeedCheckTime) / 1000;
+      let displayAps = 0;
+      if (secDiff > 0.25) {
+        displayAps = Math.round((attempts - lastSpeedCheckCount) / secDiff);
+        lastSpeedCheckTime  = now;
+        lastSpeedCheckCount = attempts;
+      }
+
+      setState(s => ({
+        ...s,
+        currentAttempt: displayStr,
+        activeIndex: lockedCount,
+        attemptCount: attempts,
+        attemptsPerSecond: displayAps,
+        elapsedMs: elapsed,
+        progress,
+        estimatedTimeLeft: remainMs > 0 ? formatSimMs(remainMs) : '0ms',
+      }));
+
+      // Occasionally log the current attempt string
+      if (attemptTrace && Math.random() < 0.05) {
+        addLog(`> ${attemptTrace}`, 'attempt');
+      }
+
+      sound.playSimTick();
+      timerRef.current = setTimeout(tick, TICK_MS[speed]);
     };
 
-    timerRef.current = setTimeout(tick, bootDelay + 400);
-  }, [addLog, buildRevealSchedule, sound]);
+    timerRef.current = setTimeout(tick, bootDelay + 200);
+  }, [addLog, clearTimers, sound]);
 
   const pause = useCallback(() => {
+    if (!runningRef.current) return;
     pausedRef.current = true;
+    pauseStartRef.current = Date.now();
     setState(s => ({ ...s, isPaused: true }));
   }, []);
 
   const resume = useCallback(() => {
+    if (!pausedRef.current) return;
+    pauseAccRef.current += Date.now() - pauseStartRef.current;
     pausedRef.current = false;
     setState(s => ({ ...s, isPaused: false }));
   }, []);
 
   const stop = useCallback(() => {
     runningRef.current = false;
-    if (timerRef.current) clearTimeout(timerRef.current);
+    clearTimers();
     setState(s => ({ ...s, isRunning: false, isPaused: false }));
     addLog('⛔ Simulation halted by user.', 'warning');
-  }, [addLog]);
+  }, [addLog, clearTimers]);
 
   const reset = useCallback(() => {
     runningRef.current = false;
-    if (timerRef.current) clearTimeout(timerRef.current);
+    clearTimers();
+    attemptRef.current = 0;
+    lastPosRef.current = 0;
+    lastLockedRef.current = 0;
+    visualCursorRef.current = 0;
     setLogs([]);
     setState({
       isRunning: false, isPaused: false, isComplete: false, found: false,
-      currentAttempt: '', attemptCount: 0, attemptsPerSecond: 0,
+      currentAttempt: '', activeIndex: 0, attemptCount: 0, attemptsPerSecond: 0,
       elapsedMs: 0, progress: 0, estimatedTimeLeft: '—',
-      target: '', charset: '', mode: 'alphanumeric', speed: 'normal',
+      target: '', charset: '', mode: 'full', speed: 'normal',
     });
-  }, []);
+  }, [clearTimers]);
 
   return { state, logs, start, pause, resume, stop, reset };
 }

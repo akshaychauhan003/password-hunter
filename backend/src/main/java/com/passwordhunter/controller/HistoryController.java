@@ -8,8 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/history")
@@ -26,12 +25,12 @@ public class HistoryController {
             @RequestParam(required = false) String difficulty) {
         try {
             Page<SimulationHistory> results = historyService.getHistory(page, limit, search, difficulty);
-            HistoryResponse response = HistoryResponse.builder()
-                    .items(results.getContent())
-                    .total(results.getTotalElements())
-                    .page(page)
-                    .limit(limit)
-                    .build();
+            HistoryResponse response = new HistoryResponse(
+                    results.getContent(),
+                    results.getTotalElements(),
+                    page,
+                    limit
+            );
             return ResponseEntity.ok().body(new ApiResponse<>(true, response));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(new ApiResponse<>(false, "Failed to fetch history"));
@@ -50,9 +49,9 @@ public class HistoryController {
                     .difficultyLabel(request.getDifficultyLabel())
                     .difficultyScore(request.getDifficultyScore())
                     .estimatedCrackTime(request.getEstimatedCrackTime())
-                    .charLength(request.getCharLength())
-                    .charsetSize(request.getCharsetSize())
-                    .entropy(request.getEntropy())
+                    .charLength(request.getCharLength() != null ? request.getCharLength() : 0)
+                    .charsetSize(request.getCharsetSize() != null ? request.getCharsetSize() : 0)
+                    .entropy(request.getEntropy() != null ? request.getEntropy() : 0.0)
                     .build();
 
             SimulationHistory saved = historyService.saveHistory(history);
@@ -82,24 +81,58 @@ public class HistoryController {
         }
     }
 
-    @Data
-    @lombok.Builder
+    // --- HistoryResponse ---
     public static class HistoryResponse {
-        private java.util.List<SimulationHistory> items;
+        private List<SimulationHistory> items;
         private long total;
         private int page;
         private int limit;
+
+        public HistoryResponse() {}
+
+        public HistoryResponse(List<SimulationHistory> items, long total, int page, int limit) {
+            this.items = items;
+            this.total = total;
+            this.page = page;
+            this.limit = limit;
+        }
+
+        public List<SimulationHistory> getItems() { return items; }
+        public void setItems(List<SimulationHistory> items) { this.items = items; }
+
+        public long getTotal() { return total; }
+        public void setTotal(long total) { this.total = total; }
+
+        public int getPage() { return page; }
+        public void setPage(int page) { this.page = page; }
+
+        public int getLimit() { return limit; }
+        public void setLimit(int limit) { this.limit = limit; }
     }
 
-    @Data
-    @AllArgsConstructor
+    // --- ApiResponse ---
     public static class ApiResponse<T> {
         private boolean success;
         private T data;
 
+        public ApiResponse() {}
+
+        public ApiResponse(boolean success, T data) {
+            this.success = success;
+            this.data = data;
+        }
+
         public ApiResponse(boolean success, String message) {
             this.success = success;
-            this.data = (T) message;
+            @SuppressWarnings("unchecked")
+            T cast = (T) message;
+            this.data = cast;
         }
+
+        public boolean isSuccess() { return success; }
+        public void setSuccess(boolean success) { this.success = success; }
+
+        public T getData() { return data; }
+        public void setData(T data) { this.data = data; }
     }
 }

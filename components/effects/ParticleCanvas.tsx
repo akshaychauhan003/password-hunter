@@ -15,13 +15,17 @@ interface Particle {
   life: number;
 }
 
-const NEON_COLORS: [number, number, number][] = [
-  [0, 255, 65],   // neon green
-  [0, 255, 255],  // cyan
-  [0, 128, 255],  // blue
-  [128, 0, 255],  // purple
-  [0, 255, 136],  // mint
-];
+function getThemeParticleColors(): [number, number, number][] {
+  if (typeof window === 'undefined') return [[0, 255, 65], [0, 255, 255]];
+  const style = getComputedStyle(document.documentElement);
+  const p1 = (style.getPropertyValue('--theme-particle-1') || '0,255,65').split(',').map(Number) as [number, number, number];
+  const p2 = (style.getPropertyValue('--theme-particle-2') || '0,255,255').split(',').map(Number) as [number, number, number];
+  const primary = (style.getPropertyValue('--theme-primary') || '#00FF41').replace('#', '');
+  const r = parseInt(primary.slice(0, 2), 16) || 0;
+  const g = parseInt(primary.slice(2, 4), 16) || 255;
+  const b = parseInt(primary.slice(4, 6), 16) || 65;
+  return [p1, p2, [r, g, b]];
+}
 
 export default function ParticleCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,7 +33,7 @@ export default function ParticleCanvas() {
   const particles = useRef<Particle[]>([]);
   const pool      = useRef<Particle[]>([]);
   const bootFrame = useRef(0);
-  const { particlesEnabled, animationIntensity } = useAppStore();
+  const { particlesEnabled, animationIntensity, theme } = useAppStore();
 
   useEffect(() => {
     if (!particlesEnabled) return;
@@ -54,7 +58,8 @@ export default function ParticleCanvas() {
       p.type       = typeRoll < 0.5 ? 'circle' : typeRoll < 0.8 ? 'dot' : 'spark';
       p.x          = Math.random() * W;
       p.y          = Math.random() * H;
-      p.color      = NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
+      const colors = getThemeParticleColors();
+      p.color      = colors[Math.floor(Math.random() * colors.length)];
       p.life       = 0;
       p.shrinking  = false;
 
@@ -153,7 +158,7 @@ export default function ParticleCanvas() {
       window.removeEventListener('resize', resize);
       particles.current = [];
     };
-  }, [particlesEnabled, animationIntensity]);
+  }, [particlesEnabled, animationIntensity, theme]);
 
   if (!particlesEnabled) return null;
 

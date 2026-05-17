@@ -62,12 +62,9 @@ export function CyberInput({ label, hint, error, glowColor = '#00FF41', classNam
       )}
       <input
         className={clsx(
-          'w-full bg-bg-terminal border rounded-lg px-4 py-3',
-          'font-mono text-neon-green text-base placeholder:text-white/20',
-          'border-neon-green/30 focus:border-neon-green focus:outline-none',
-          'transition-all duration-200',
-          'focus:shadow-[0_0_0_1px_#00FF41,0_0_20px_#00FF4130]',
-          error ? 'border-neon-red' : '',
+          'w-full cyber-input rounded-lg px-4 py-3',
+          'font-mono text-base transition-all duration-200',
+          error ? 'border-[var(--theme-danger)]' : '',
           className
         )}
         {...props}

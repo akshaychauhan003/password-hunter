@@ -16,6 +16,7 @@ export interface SimulationState {
   attemptsPerSecond: number;
   elapsedMs: number;
   progress: number;           // 0.0 – 1.0
+  activeIndex: number;
   estimatedTimeLeft: string;
   found: boolean;
   target: string;
@@ -132,22 +133,8 @@ export interface AuthPayload {
   username: string;
 }
 
-// ─── Theme Config ─────────────────────────────────────────────
-
-export interface ThemeConfig {
-  primary: string;
-  primaryHex: string;
-  secondary: string;
-  name: string;
-  label: string;
-}
-
-export const THEMES: Record<ThemeName, ThemeConfig> = {
-  'hacker-green': { primary: 'text-neon-green', primaryHex: '#00FF41', secondary: 'text-neon-cyan', name: 'hacker-green', label: 'Hacker Green' },
-  'cyber-blue':   { primary: 'text-neon-blue',  primaryHex: '#0080FF', secondary: 'text-neon-cyan', name: 'cyber-blue',   label: 'Cyber Blue'   },
-  'neon-purple':  { primary: 'text-neon-purple', primaryHex: '#8000FF', secondary: 'text-neon-cyan', name: 'neon-purple',  label: 'Neon Purple'  },
-  'red-matrix':   { primary: 'text-neon-red',    primaryHex: '#FF2020', secondary: 'text-neon-amber', name: 'red-matrix',  label: 'Red Matrix'  },
-};
+// Theme labels & CSS variables: see @/lib/theme (single source of truth)
+export { THEME_LABELS, THEME_IDS, DEFAULT_THEME } from '@/lib/theme';
 
 // ─── Charset definitions ──────────────────────────────────────
 

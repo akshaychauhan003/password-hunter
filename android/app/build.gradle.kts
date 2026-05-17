@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -91,4 +93,38 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+fun copyBuiltApk(variant: String) {
+    val sourceDir = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
+    val destDir = file("../../public/downloads")
+
+    if (!sourceDir.exists()) {
+        println("⚠ No $variant APK directory found at $sourceDir")
+        return
+    }
+
+    destDir.mkdirs()
+
+    val apkFile = sourceDir.listFiles { file ->
+        file.name.endsWith(".apk") && !file.name.contains("unsigned")
+    }?.firstOrNull()
+
+    if (apkFile == null) {
+        println("⚠ No $variant APK found in $sourceDir")
+        return
+    }
+
+    val destFile = File(destDir, "password-hunter.apk")
+    apkFile.copyTo(destFile, overwrite = true)
+    println("✓ ${variant.replaceFirstChar { it.uppercase() }} APK copied to ${destFile.absolutePath}")
+}
+
+afterEvaluate {
+    tasks.matching { it.name == "assembleDebug" || it.name == "assembleRelease" }.configureEach {
+        doLast {
+            val variant = name.removePrefix("assemble").lowercase()
+            copyBuiltApk(variant)
+        }
+    }
 }

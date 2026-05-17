@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "android:build": "bash scripts/build-android.sh --release",
+    "android:build:debug": "bash scripts/build-android.sh --debug",
+    "android:build:skip-tests": "bash scripts/build-android.sh --skip-tests",
+    "setup": "bash scripts/setup.sh"
   },
   "dependencies": {
     "next": "14.2.35",
