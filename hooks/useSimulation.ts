@@ -34,6 +34,8 @@ export function useSimulation() {
   const attemptRef     = useRef(0);
   const lastPosRef     = useRef(0); // number of locked positions already logged
   const visualCursorRef = useRef(0);
+  const visualPosRef    = useRef(0);
+  const lastApsRef      = useRef(0);
   const lastLockedRef   = useRef(0);
 
   const [state, setState] = useState<SimulationState>({
@@ -90,6 +92,8 @@ export function useSimulation() {
     lastPosRef.current   = 0;
     lastLockedRef.current = 0;
     visualCursorRef.current = 0;
+    visualPosRef.current = 0;
+    lastApsRef.current = 0;
     startTimeRef.current = Date.now();
 
     setLogs([]);
@@ -204,16 +208,34 @@ export function useSimulation() {
       }
 
       const attempts = attemptRef.current;
-      const { lockedCount, found } = positionAtAttempt(attempts, plan);
+      const { lockedCount: mathLockedCount, attemptWithinPos, found: mathFound } = positionAtAttempt(attempts, plan);
 
-      if (lockedCount > lastLockedRef.current) {
-        visualCursorRef.current = 0;
+      // --- VISUAL CATCH-UP LOGIC ---
+      if (speed !== 'instant' && visualPosRef.current < plan.indices.length) {
+        if (visualPosRef.current < mathLockedCount) {
+          const targetIdx = plan.indices[visualPosRef.current].charsetIndex;
+          visualCursorRef.current += VISUAL_STEP[speed];
+          
+          if (visualCursorRef.current >= targetIdx) {
+            visualPosRef.current++;
+            visualCursorRef.current = 0;
+          }
+        } else if (visualPosRef.current === mathLockedCount && mathLockedCount < plan.indices.length) {
+          const mathTryIdx = Math.min(Math.max(attemptWithinPos - 1, 0), plan.charset.length - 1);
+          visualCursorRef.current += VISUAL_STEP[speed];
+          if (visualCursorRef.current > mathTryIdx) {
+            visualCursorRef.current = mathTryIdx;
+          }
+        }
       }
-      lastLockedRef.current = lockedCount;
 
-      // Log newly cracked positions immediately when they lock.
-      if (lockedCount > lastPosRef.current) {
-        for (let i = lastPosRef.current; i < lockedCount; i++) {
+      const currentVisualLocked = speed === 'instant' ? mathLockedCount : visualPosRef.current;
+      const isMathComplete = mathFound || attempts >= totalAttempts;
+      const isVisualComplete = speed === 'instant' ? isMathComplete : currentVisualLocked >= plan.indices.length;
+
+      // Log newly cracked positions immediately when they VISUALLY lock.
+      if (currentVisualLocked > lastPosRef.current) {
+        for (let i = lastPosRef.current; i < currentVisualLocked; i++) {
           const crackedChar = plan.indices[i].targetChar;
           const posAttempts = plan.indices[i].attemptsForIndex;
           addLog(
@@ -222,54 +244,67 @@ export function useSimulation() {
           );
           sound.playWarning();
         }
-        lastPosRef.current = lockedCount;
+        lastPosRef.current = currentVisualLocked;
       }
 
       // Check for complete
-      if (found || attempts >= totalAttempts) {
-        finishSuccess(totalAttempts, elapsed);
+      if (isMathComplete && isVisualComplete) {
+        const finalElapsedMs = (totalAttempts / SPEED_APS[speed]) * 1000;
+        finishSuccess(totalAttempts, finalElapsedMs);
         return;
       }
 
-      const progress = Math.min(attempts / totalAttempts, 0.999);
-      const visualCandidate = lockedCount >= plan.indices.length
-        ? ''
-        : speed === 'instant'
-          ? plan.indices[lockedCount].targetChar
-          : plan.charset[visualCursorRef.current] || plan.indices[lockedCount].targetChar;
-
-      if (lockedCount < plan.indices.length && speed !== 'instant') {
-        const visualStep = Math.min(VISUAL_STEP[speed], plan.charset.length);
-        visualCursorRef.current = (visualCursorRef.current + visualStep) % plan.charset.length;
+      let visualCandidate = '';
+      if (currentVisualLocked < plan.indices.length) {
+        visualCandidate = speed === 'instant'
+          ? plan.indices[currentVisualLocked].targetChar
+          : plan.charset[visualCursorRef.current] ?? plan.charset[plan.charset.length - 1];
       }
 
-      const displayStr = buildDisplayString(attempts, plan, {
-        includeCandidate: true,
-        candidateOverride: visualCandidate,
-      });
-      const attemptTrace = buildDisplayString(attempts, plan, {
-        includeCandidate: true,
-        suffixChar: '',
-        candidateOverride: visualCandidate,
-      });
-      const remainMs = Math.max(0, ((totalAttempts - attempts) / SPEED_APS[speed]) * 1000);
+      const lockedPrefix = plan.indices
+        .slice(0, currentVisualLocked)
+        .map(i => i.targetChar)
+        .join('');
 
-      // APS measurement
+      let displayStr = lockedPrefix;
+      if (currentVisualLocked < plan.indices.length) {
+        displayStr += visualCandidate;
+        const remainChars = plan.indices.length - currentVisualLocked - 1;
+        if (remainChars > 0) displayStr += '_'.repeat(remainChars);
+      }
+
+      const attemptTrace = displayStr;
+
+      // UI Stats - Calculate interpolated attempts based on visual state
+      let uiAttempts = attempts;
+      if (speed !== 'instant') {
+        const baseAttempts = currentVisualLocked > 0 ? plan.cumAttempts[currentVisualLocked - 1] : 0;
+        const currentPosTarget = currentVisualLocked < plan.indices.length ? plan.indices[currentVisualLocked].attemptsForIndex : 0;
+        const addedAttempts = Math.min(visualCursorRef.current + 1, currentPosTarget);
+        uiAttempts = Math.min(totalAttempts, baseAttempts + addedAttempts);
+      }
+
+      const progress = Math.min(uiAttempts / totalAttempts, 0.999);
+      const uiElapsed = (uiAttempts / SPEED_APS[speed]) * 1000;
+      const remainMs = Math.max(0, ((totalAttempts - uiAttempts) / SPEED_APS[speed]) * 1000);
+
+      // APS measurement (Jitter around the target APS to simulate real-time performance)
       const secDiff = (now - lastSpeedCheckTime) / 1000;
-      let displayAps = 0;
+      let displayAps = lastApsRef.current || SPEED_APS[speed];
       if (secDiff > 0.25) {
-        displayAps = Math.round((attempts - lastSpeedCheckCount) / secDiff);
+        const jitter = 1 + (Math.random() * 0.1 - 0.05);
+        displayAps = Math.round(SPEED_APS[speed] * jitter);
         lastSpeedCheckTime  = now;
-        lastSpeedCheckCount = attempts;
+        lastApsRef.current = displayAps;
       }
 
       setState(s => ({
         ...s,
         currentAttempt: displayStr,
-        activeIndex: lockedCount,
-        attemptCount: attempts,
-        attemptsPerSecond: displayAps,
-        elapsedMs: elapsed,
+        activeIndex: currentVisualLocked,
+        attemptCount: uiAttempts,
+        attemptsPerSecond: speed === 'instant' ? SPEED_APS.instant : displayAps,
+        elapsedMs: uiElapsed,
         progress,
         estimatedTimeLeft: remainMs > 0 ? formatSimMs(remainMs) : '0ms',
       }));
@@ -314,6 +349,8 @@ export function useSimulation() {
     lastPosRef.current = 0;
     lastLockedRef.current = 0;
     visualCursorRef.current = 0;
+    visualPosRef.current = 0;
+    lastApsRef.current = 0;
     setLogs([]);
     setState({
       isRunning: false, isPaused: false, isComplete: false, found: false,

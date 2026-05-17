@@ -3,6 +3,8 @@ package com.passwordhunter.mobile.network
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface PasswordHunterApi {
@@ -20,4 +22,10 @@ interface PasswordHunterApi {
     
     @POST("api/history")
     suspend fun saveHistory(@Body request: HistoryRequest): ApiResponse<SimulationHistory>
+
+    @DELETE("api/history/{id}")
+    suspend fun deleteHistory(@Path("id") id: String): ApiResponse<String>
+
+    @DELETE("api/history/all")
+    suspend fun deleteAllHistory(): ApiResponse<String>
 }

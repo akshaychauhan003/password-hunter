@@ -1,17 +1,28 @@
 package com.passwordhunter.mobile.network
 
 import android.content.Context
+import com.passwordhunter.mobile.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import com.google.gson.GsonBuilder
 import java.util.concurrent.TimeUnit
+import com.passwordhunter.mobile.theme.ThemePreferences
 
 object RetrofitClient {
-    private const val BASE_URL = "http://localhost:8080/"
-    
+    private fun normalizeUrl(url: String): String {
+        val trimmed = url.trim().takeIf { it.isNotEmpty() } ?: BuildConfig.DEFAULT_BACKEND_URL
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }
+        return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+    }
+
     fun getInstance(context: Context): PasswordHunterApi {
+        val backendUrl = normalizeUrl(ThemePreferences(context).getBackendUrl())
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
@@ -28,7 +39,7 @@ object RetrofitClient {
             .create()
 
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(backendUrl)
             .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()

@@ -16,6 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.passwordhunter.mobile.theme.CyberThemeColors
 import kotlinx.coroutines.delay
+import com.passwordhunter.mobile.network.RetrofitClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.platform.LocalContext
 
 private val BOOT_LINES = listOf(
     "BIOS v4.7.1 ...................... [OK]" to 200L,
@@ -36,7 +41,7 @@ private val BOOT_LINES = listOf(
 @Composable
 fun BootScreen(
     colors: CyberThemeColors,
-    onComplete: () -> Unit,
+    onComplete: (Boolean) -> Unit,
 ) {
     val lines = remember { mutableStateListOf<String>() }
     var progress by remember { mutableStateOf(0f) }
@@ -50,17 +55,38 @@ fun BootScreen(
         }
     }
 
+    val context = LocalContext.current
+
     LaunchedEffect(Unit) {
         delay(400)
-        var cumulative = 0L
+
+        val backendJob = async(Dispatchers.IO) {
+            try {
+                val api = RetrofitClient.getInstance(context)
+                val response = withTimeoutOrNull(3000L) {
+                    api.getHistory(1, 1, null, null)
+                }
+                response != null
+            } catch (e: Exception) {
+                false
+            }
+        }
+
         BOOT_LINES.forEachIndexed { index, (text, lineDelay) ->
-            cumulative += lineDelay
             delay(lineDelay)
             lines.add(text)
             progress = (index + 1).toFloat() / BOOT_LINES.size
         }
+
+        val isOnline = backendJob.await()
+        if (isOnline) {
+            lines.add("Backend Connection ................ [OK]")
+        } else {
+            lines.add("Backend unavailable — running in offline mode")
+        }
+
         delay(1200)
-        onComplete()
+        onComplete(isOnline)
     }
 
     val animatedProgress by animateFloatAsState(
