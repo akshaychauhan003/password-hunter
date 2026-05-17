@@ -149,3 +149,4 @@ This application is **purely educational**. It simulates brute-force concepts
 to illustrate why password strength matters. It cannot attack, access, or affect
 any external system. Using password cracking techniques against systems you do
 not own is **illegal and unethical**.
+# password-hunter
