@@ -12,17 +12,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.passwordhunter.mobile.theme.CyberThemeColors
-import kotlinx.coroutines.delay
 import com.passwordhunter.mobile.network.RetrofitClient
-import kotlinx.coroutines.async
+import com.passwordhunter.mobile.theme.CyberThemeColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.ui.platform.LocalContext
-import kotlin.random.Random
 
 private val BOOT_LINES = listOf(
     "BIOS v4.7.1 ...................... [OK]" to 200L,
@@ -40,9 +40,8 @@ private val BOOT_LINES = listOf(
     "System ready. Welcome, Hunter." to 600L,
 )
 
-private const val TOTAL_BOOT_TIME_MS = 6500L // Total expected boot time
-private const val BACKEND_TIMEOUT_MS = 2000L // Backend check timeout
-private const val OVERALL_BOOT_TIMEOUT_MS = 8000L // Max time before we move on
+private const val BACKEND_TIMEOUT_MS = 2500L
+private const val OVERALL_BOOT_TIMEOUT_MS = 9000L
 
 @Composable
 fun BootScreen(
@@ -50,79 +49,81 @@ fun BootScreen(
     onComplete: (Boolean) -> Unit,
 ) {
     val lines = remember { mutableStateListOf<String>() }
-    var progress by remember { mutableStateOf(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
     var showCursor by remember { mutableStateOf(true) }
     var bootError by remember { mutableStateOf<String?>(null) }
+    var completed by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
     val context = LocalContext.current
-    val TAG = "BootScreen"
+    val tag = "BootScreen"
 
-    // Single consolidated LaunchedEffect for boot sequence
+    fun finish(online: Boolean) {
+        if (completed) return
+        completed = true
+        Log.d(tag, "Boot complete — online=$online")
+        onComplete(online)
+    }
+
     LaunchedEffect(Unit) {
         try {
-            Log.d(TAG, "Boot sequence started")
-            
-            // Start backend check asynchronously (don't wait for it to finish)
-            var isOnline = false
             val backendJob = async(Dispatchers.IO) {
-                try {
-                    Log.d(TAG, "Backend check starting...")
+                runCatching {
                     val api = RetrofitClient.getInstance(context)
                     val response = withTimeoutOrNull(BACKEND_TIMEOUT_MS) {
-                        api.getHistory(1, 1, null, null)
+                        api.getHistory(page = 1, limit = 1)
                     }
-                    val online = response != null
-                    Log.d(TAG, "Backend check result: $online")
-                    online
-                } catch (e: Exception) {
-                    Log.e(TAG, "Backend check failed", e)
-                    false
-                }
+                    response?.success == true
+                }.getOrDefault(false)
             }
 
-            // Display boot lines with progress update
             BOOT_LINES.forEachIndexed { index, (text, lineDelay) ->
                 delay(lineDelay)
                 lines.add(text)
                 progress = (index + 1).toFloat() / BOOT_LINES.size
-                Log.d(TAG, "Boot line $index: $progress")
             }
 
-            // Wait for backend job with timeout (don't wait longer than needed)
-            val backendResult = withTimeoutOrNull(BACKEND_TIMEOUT_MS) {
+            val isOnline = withTimeoutOrNull(BACKEND_TIMEOUT_MS) {
                 backendJob.await()
             } ?: false
-            
-            isOnline = backendResult
-            Log.d(TAG, "Backend status determined: $isOnline")
 
-            // Add backend status line
             if (isOnline) {
                 lines.add("Backend Connection ................ [OK]")
             } else {
-                lines.add("Backend unavailable — running in offline mode")
-                bootError = "Backend unavailable — running in offline mode"
+                val offlineMsg = "Backend unavailable — running in offline mode"
+                lines.add(offlineMsg)
+                bootError = offlineMsg
             }
 
-            progress = 1.0f
-            delay(1200)
-            
-            Log.d(TAG, "Boot sequence complete, marking booted=true, isOnline=$isOnline")
-            onComplete(isOnline)
-            
+            progress = 1f
+            delay(800)
+            finish(isOnline)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Boot error", e)
-            bootError = "Boot error: ${e.message}"
-            progress = 1.0f
-            // Still complete with offline mode on error
-            delay(1000)
-            onComplete(false)
+            Log.e(tag, "Boot error", e)
+            bootError = "Backend unavailable — running in offline mode"
+            progress = 1f
+            delay(500)
+            finish(false)
         }
     }
 
-    // Separate LaunchedEffect for cursor blinking (non-critical)
+    // Hard cap: always exit boot even if animation stalls
     LaunchedEffect(Unit) {
-        while (true) {
+        delay(OVERALL_BOOT_TIMEOUT_MS)
+        if (!completed) {
+            Log.w(tag, "Boot overall timeout — forcing completion")
+            if (!lines.any { it.contains("offline") || it.contains("Backend Connection") }) {
+                lines.add("Backend unavailable — running in offline mode")
+                bootError = "Backend unavailable — running in offline mode"
+            }
+            progress = 1f
+            finish(false)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (!completed) {
             delay(500)
             showCursor = !showCursor
         }
@@ -169,7 +170,7 @@ fun BootScreen(
                 val lineColor = when {
                     line.contains("READY") -> colors.secondary
                     line.contains("VERIFIED") || line.contains("[OK]") -> colors.primary.copy(alpha = 0.85f)
-                    line.contains("offline") -> colors.secondary.copy(alpha = 0.8f)
+                    line.contains("offline", ignoreCase = true) -> colors.secondary.copy(alpha = 0.8f)
                     else -> colors.primary
                 }
                 Text(
@@ -190,7 +191,6 @@ fun BootScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Show error if present
         bootError?.let {
             Text(
                 it,

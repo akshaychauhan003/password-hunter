@@ -87,7 +87,6 @@ fun PasswordAnalysisScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(colors.background.copy(alpha = 0.95f))
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -107,6 +106,10 @@ fun PasswordAnalysisScreen(
             fontSize = 11.sp,
             modifier = Modifier.padding(bottom = 18.dp),
         )
+
+        ThemeSelector(colors, currentTheme, onThemeChange)
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (isOffline) {
             Card(

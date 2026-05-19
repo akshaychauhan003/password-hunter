@@ -1,5 +1,8 @@
 package com.passwordhunter.mobile.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /** Theme ids aligned with website: hacker-green, cyber-blue, neon-purple, red-matrix */
@@ -96,4 +99,31 @@ data class CyberThemeColors(
             )
         }
     }
+}
+
+@Composable
+fun CyberMaterialTheme(
+    colors: CyberThemeColors,
+    content: @Composable () -> Unit,
+) {
+    val scheme = darkColorScheme(
+        primary = colors.primary,
+        onPrimary = colors.background,
+        secondary = colors.secondary,
+        onSecondary = colors.background,
+        tertiary = colors.accent,
+        background = colors.background,
+        onBackground = Color.White,
+        surface = colors.backgroundCard,
+        onSurface = Color.White,
+        surfaceVariant = colors.backgroundTerminal,
+        onSurfaceVariant = colors.textMuted,
+        error = colors.danger,
+        onError = Color.White,
+        outline = colors.border,
+    )
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content,
+    )
 }
