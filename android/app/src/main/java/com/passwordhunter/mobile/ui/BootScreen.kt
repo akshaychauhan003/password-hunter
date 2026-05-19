@@ -1,5 +1,6 @@
 package com.passwordhunter.mobile.ui
 
+import android.util.Log
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.platform.LocalContext
+import kotlin.random.Random
 
 private val BOOT_LINES = listOf(
     "BIOS v4.7.1 ...................... [OK]" to 200L,
@@ -38,6 +40,10 @@ private val BOOT_LINES = listOf(
     "System ready. Welcome, Hunter." to 600L,
 )
 
+private const val TOTAL_BOOT_TIME_MS = 6500L // Total expected boot time
+private const val BACKEND_TIMEOUT_MS = 2000L // Backend check timeout
+private const val OVERALL_BOOT_TIMEOUT_MS = 8000L // Max time before we move on
+
 @Composable
 fun BootScreen(
     colors: CyberThemeColors,
@@ -46,47 +52,80 @@ fun BootScreen(
     val lines = remember { mutableStateListOf<String>() }
     var progress by remember { mutableStateOf(0f) }
     var showCursor by remember { mutableStateOf(true) }
+    var bootError by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
+    val context = LocalContext.current
+    val TAG = "BootScreen"
 
+    // Single consolidated LaunchedEffect for boot sequence
+    LaunchedEffect(Unit) {
+        try {
+            Log.d(TAG, "Boot sequence started")
+            
+            // Start backend check asynchronously (don't wait for it to finish)
+            var isOnline = false
+            val backendJob = async(Dispatchers.IO) {
+                try {
+                    Log.d(TAG, "Backend check starting...")
+                    val api = RetrofitClient.getInstance(context)
+                    val response = withTimeoutOrNull(BACKEND_TIMEOUT_MS) {
+                        api.getHistory(1, 1, null, null)
+                    }
+                    val online = response != null
+                    Log.d(TAG, "Backend check result: $online")
+                    online
+                } catch (e: Exception) {
+                    Log.e(TAG, "Backend check failed", e)
+                    false
+                }
+            }
+
+            // Display boot lines with progress update
+            BOOT_LINES.forEachIndexed { index, (text, lineDelay) ->
+                delay(lineDelay)
+                lines.add(text)
+                progress = (index + 1).toFloat() / BOOT_LINES.size
+                Log.d(TAG, "Boot line $index: $progress")
+            }
+
+            // Wait for backend job with timeout (don't wait longer than needed)
+            val backendResult = withTimeoutOrNull(BACKEND_TIMEOUT_MS) {
+                backendJob.await()
+            } ?: false
+            
+            isOnline = backendResult
+            Log.d(TAG, "Backend status determined: $isOnline")
+
+            // Add backend status line
+            if (isOnline) {
+                lines.add("Backend Connection ................ [OK]")
+            } else {
+                lines.add("Backend unavailable — running in offline mode")
+                bootError = "Backend unavailable — running in offline mode"
+            }
+
+            progress = 1.0f
+            delay(1200)
+            
+            Log.d(TAG, "Boot sequence complete, marking booted=true, isOnline=$isOnline")
+            onComplete(isOnline)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Boot error", e)
+            bootError = "Boot error: ${e.message}"
+            progress = 1.0f
+            // Still complete with offline mode on error
+            delay(1000)
+            onComplete(false)
+        }
+    }
+
+    // Separate LaunchedEffect for cursor blinking (non-critical)
     LaunchedEffect(Unit) {
         while (true) {
             delay(500)
             showCursor = !showCursor
         }
-    }
-
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        delay(400)
-
-        val backendJob = async(Dispatchers.IO) {
-            try {
-                val api = RetrofitClient.getInstance(context)
-                val response = withTimeoutOrNull(3000L) {
-                    api.getHistory(1, 1, null, null)
-                }
-                response != null
-            } catch (e: Exception) {
-                false
-            }
-        }
-
-        BOOT_LINES.forEachIndexed { index, (text, lineDelay) ->
-            delay(lineDelay)
-            lines.add(text)
-            progress = (index + 1).toFloat() / BOOT_LINES.size
-        }
-
-        val isOnline = backendJob.await()
-        if (isOnline) {
-            lines.add("Backend Connection ................ [OK]")
-        } else {
-            lines.add("Backend unavailable — running in offline mode")
-        }
-
-        delay(1200)
-        onComplete(isOnline)
     }
 
     val animatedProgress by animateFloatAsState(
@@ -130,6 +169,7 @@ fun BootScreen(
                 val lineColor = when {
                     line.contains("READY") -> colors.secondary
                     line.contains("VERIFIED") || line.contains("[OK]") -> colors.primary.copy(alpha = 0.85f)
+                    line.contains("offline") -> colors.secondary.copy(alpha = 0.8f)
                     else -> colors.primary
                 }
                 Text(
@@ -149,6 +189,19 @@ fun BootScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Show error if present
+        bootError?.let {
+            Text(
+                it,
+                color = colors.secondary.copy(alpha = 0.8f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),

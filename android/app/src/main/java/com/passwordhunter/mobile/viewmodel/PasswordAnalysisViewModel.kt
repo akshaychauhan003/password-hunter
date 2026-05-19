@@ -1,6 +1,7 @@
 package com.passwordhunter.mobile.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.passwordhunter.mobile.network.HistoryRequest
@@ -12,6 +13,8 @@ import com.passwordhunter.mobile.theme.ThemePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "PasswordAnalysisVM"
 
 class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = ThemePreferences(application)
@@ -48,6 +51,9 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
 
     private val _historySaveStatus = MutableStateFlow<String?>(null)
     val historySaveStatus: StateFlow<String?> = _historySaveStatus
+    
+    private val _isOfflineMode = MutableStateFlow(false)
+    val isOfflineMode: StateFlow<Boolean> = _isOfflineMode
 
     private fun api() = RetrofitClient.getInstance(getApplication())
 
@@ -69,6 +75,8 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
     fun updateBackendUrl(url: String) {
         prefs.setBackendUrl(url)
         _backendUrl.value = prefs.getBackendUrl()
+        // Clear cache so it re-creates instance with new URL
+        RetrofitClient.clearCache()
     }
 
     fun analyzePassword() {
@@ -83,15 +91,22 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
             _historySaveStatus.value = null
 
             try {
+                Log.d(TAG, "Analyzing password...")
                 val response = api().analyzePassword(PasswordAnalysisRequest(_password.value))
                 if (response.success && response.data != null) {
                     _analysis.value = response.data
-                    saveHistory(_password.value, response.data)
+                    Log.d(TAG, "Analysis successful: ${response.data.label}")
+                    if (!_isOfflineMode.value) {
+                        saveHistory(_password.value, response.data)
+                    }
                 } else {
                     _error.value = response.message ?: "Analysis failed"
+                    Log.w(TAG, "Analysis failed: ${_error.value}")
                 }
             } catch (e: Exception) {
-                _error.value = "Network error: ${e.localizedMessage}"
+                _isOfflineMode.value = true
+                _error.value = "Backend unavailable - running in offline mode. Error: ${e.localizedMessage}"
+                Log.e(TAG, "Network error during analysis", e)
             } finally {
                 _isLoading.value = false
             }
@@ -100,16 +115,20 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
 
     private suspend fun saveHistory(password: String, analysis: com.passwordhunter.mobile.network.PasswordAnalysis) {
         try {
+            Log.d(TAG, "Saving history...")
             val request = buildHistoryRequest(password, analysis)
             val saveResponse = api().saveHistory(request)
             _historySaveStatus.value = if (saveResponse.success) {
+                Log.d(TAG, "History saved successfully")
                 loadHistory()
                 "Saved to history"
             } else {
+                Log.w(TAG, "History save failed: ${saveResponse.message}")
                 saveResponse.message ?: "Failed to save history"
             }
         } catch (e: Exception) {
-            _historySaveStatus.value = "History save failed: ${e.localizedMessage}"
+            _historySaveStatus.value = "History save failed (offline mode)"
+            Log.e(TAG, "Error saving history", e)
         }
     }
 
@@ -119,14 +138,19 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
             _historyError.value = null
 
             try {
+                Log.d(TAG, "Loading history...")
                 val response = api().getHistory(page = 1, limit = 30)
                 if (response.success && response.data != null) {
                     _history.value = response.data.items
+                    Log.d(TAG, "History loaded: ${response.data.items.size} items")
                 } else {
                     _historyError.value = "Unable to load history"
+                    Log.w(TAG, "History load failed: ${_historyError.value}")
                 }
             } catch (e: Exception) {
-                _historyError.value = "Cannot connect to backend: ${e.localizedMessage}"
+                _isOfflineMode.value = true
+                _historyError.value = "Cannot connect to backend (offline mode)"
+                Log.e(TAG, "Error loading history", e)
             } finally {
                 _historyLoading.value = false
             }
@@ -136,10 +160,12 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
     fun deleteHistory(historyId: String) {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Deleting history item: $historyId")
                 api().deleteHistory(historyId)
                 loadHistory()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _historyError.value = "Failed to delete history"
+                Log.e(TAG, "Error deleting history", e)
             }
         }
     }
@@ -147,10 +173,12 @@ class PasswordAnalysisViewModel(application: Application) : AndroidViewModel(app
     fun clearHistory() {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Clearing all history")
                 api().deleteAllHistory()
                 loadHistory()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _historyError.value = "Failed to clear history"
+                Log.e(TAG, "Error clearing history", e)
             }
         }
     }

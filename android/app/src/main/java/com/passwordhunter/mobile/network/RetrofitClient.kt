@@ -11,6 +11,9 @@ import java.util.concurrent.TimeUnit
 import com.passwordhunter.mobile.theme.ThemePreferences
 
 object RetrofitClient {
+    private var cachedInstance: PasswordHunterApi? = null
+    private var cachedBaseUrl: String? = null
+    
     private fun normalizeUrl(url: String): String {
         val trimmed = url.trim().takeIf { it.isNotEmpty() } ?: BuildConfig.DEFAULT_BACKEND_URL
         val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -23,26 +26,43 @@ object RetrofitClient {
 
     fun getInstance(context: Context): PasswordHunterApi {
         val backendUrl = normalizeUrl(ThemePreferences(context).getBackendUrl())
+        
+        // Return cached instance if URL hasn't changed
+        if (cachedInstance != null && cachedBaseUrl == backendUrl) {
+            return cachedInstance!!
+        }
+        
+        android.util.Log.d("RetrofitClient", "Creating Retrofit instance for: $backendUrl")
+        
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
 
         val httpClient = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
             .build()
 
         val gson = GsonBuilder()
             .setDateFormat("yyyy-MM-dd'T'HH:mm:ss")
             .create()
 
-        return Retrofit.Builder()
+        val instance = Retrofit.Builder()
             .baseUrl(backendUrl)
             .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(PasswordHunterApi::class.java)
+        
+        cachedInstance = instance
+        cachedBaseUrl = backendUrl
+        return instance
+    }
+    
+    fun clearCache() {
+        cachedInstance = null
+        cachedBaseUrl = null
     }
 }
