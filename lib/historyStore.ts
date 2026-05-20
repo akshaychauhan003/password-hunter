@@ -9,6 +9,8 @@ export interface MemoryHistoryItem {
   totalAttempts: number;
   timeTakenMs: number;
   modeUsed: string;
+  discoveryMode?: string;
+  eyeState?: string;
   difficultyLabel: string;
   difficultyScore: number;
   estimatedCrackTime: string;

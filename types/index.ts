@@ -4,6 +4,9 @@ export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Extreme' | 'Impossib
 export type ThemeName = 'hacker-green' | 'cyber-blue' | 'neon-purple' | 'red-matrix';
 export type SimSpeed = 'slow' | 'normal' | 'fast' | 'instant';
 export type CharsetMode = 'alpha' | 'numeric' | 'alphanumeric' | 'full' | 'custom';
+/** open = direct visibility; blind = closed-eye validation-only discovery */
+export type DiscoveryMode = 'open' | 'blind';
+export type EyeState = 'open' | 'closed';
 
 // ─── Simulation ────────────────────────────────────────────────
 
@@ -20,9 +23,12 @@ export interface SimulationState {
   estimatedTimeLeft: string;
   found: boolean;
   target: string;
+  /** Reconstructed password during/after blind discovery (never leaks target mid-run). */
+  discoveredPassword: string;
   charset: string;
   mode: CharsetMode;
   speed: SimSpeed;
+  discoveryMode: DiscoveryMode;
 }
 
 export interface SimulationResult {
@@ -70,6 +76,9 @@ export interface HistoryItem {
   totalAttempts: number;
   timeTakenMs: number;
   modeUsed: CharsetMode;
+  /** open-eye vs blind (closed-eye) discovery */
+  discoveryMode?: DiscoveryMode;
+  eyeState?: EyeState;
   difficultyLabel: DifficultyLevel;
   difficultyScore: number;
   estimatedCrackTime: string;
@@ -86,6 +95,15 @@ export interface TerminalEntry {
   id: string;
   text: string;
   type: LogType;
+  timestamp: number;
+}
+
+/** One brute-force guess line: `guess = target → false|TRUE` */
+export interface AttemptLine {
+  id: string;
+  guess: string;
+  target: string;
+  matched: boolean;
   timestamp: number;
 }
 

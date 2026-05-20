@@ -56,12 +56,17 @@ export default function SettingsPanel({ onClose }: Props) {
 
           {/* Speed */}
           <div>
-            <label className="text-[10px] font-mono text-neon-cyan/60 tracking-widest uppercase mb-2 block">Simulation Speed</label>
+            <label className="text-[10px] font-mono text-neon-cyan/60 tracking-widest uppercase mb-2 block">Search Speed</label>
             <div className="grid grid-cols-4 gap-1.5">
-              {(['slow','normal','fast','instant'] as SimSpeed[]).map(s => (
+              {([
+                ['slow', 'SLOW'],
+                ['normal', 'MED'],
+                ['fast', 'FAST'],
+                ['instant', 'ULTRA'],
+              ] as [SimSpeed, string][]).map(([s, label]) => (
                 <button key={s} onClick={() => store.setSimSpeed(s)}
                   className={`py-2 rounded-lg border font-mono text-[10px] tracking-wider transition-all ${store.simSpeed === s ? 'border-neon-amber text-neon-amber bg-neon-amber/10' : 'border-white/10 text-white/40 hover:border-white/30'}`}>
-                  {s.toUpperCase()}
+                  {label}
                 </button>
               ))}
             </div>

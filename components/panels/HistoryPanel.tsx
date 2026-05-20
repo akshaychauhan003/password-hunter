@@ -212,7 +212,7 @@ export default function HistoryPanel({ onClose, refreshTrigger = 0 }: Props) {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-1">
                         <div>
                           <p className="text-[9px] font-mono theme-muted-text uppercase tracking-wider">Attempts</p>
                           <p className="text-xs font-mono font-bold theme-primary-text">{fmtNum(item.totalAttempts)}</p>
@@ -222,8 +222,14 @@ export default function HistoryPanel({ onClose, refreshTrigger = 0 }: Props) {
                           <p className="text-xs font-mono font-bold" style={{ color: 'var(--theme-accent)' }}>{fmtMs(item.timeTakenMs)}</p>
                         </div>
                         <div>
-                          <p className="text-[9px] font-mono theme-muted-text uppercase tracking-wider">Mode</p>
+                          <p className="text-[9px] font-mono theme-muted-text uppercase tracking-wider">Charset</p>
                           <p className="text-xs font-mono theme-muted-text">{item.modeUsed}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-mono theme-muted-text uppercase tracking-wider">Eye</p>
+                          <p className="text-xs font-mono theme-muted-text">
+                            {item.eyeState === 'closed' || item.discoveryMode === 'blind' ? '👁 Blind' : '👁 Open'}
+                          </p>
                         </div>
                         <div>
                           <p className="text-[9px] font-mono theme-muted-text uppercase tracking-wider">Real Crack</p>

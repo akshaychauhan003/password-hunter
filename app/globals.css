@@ -204,6 +204,23 @@ html, body {
   box-shadow: var(--theme-glow-btn);
 }
 
+/* ── Blind discovery active character flicker ───────────────────────────── */
+@keyframes matrix-flicker {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px var(--theme-secondary); }
+  50% { opacity: 0.65; text-shadow: 0 0 14px var(--theme-primary); }
+}
+.matrix-flicker {
+  animation: matrix-flicker 0.12s ease-in-out infinite;
+}
+
+@keyframes success-glow-pulse {
+  0%, 100% { text-shadow: 0 0 8px var(--theme-primary), 0 0 16px var(--theme-primary); }
+  50% { text-shadow: 0 0 14px var(--theme-secondary), 0 0 28px var(--theme-primary); }
+}
+.success-glow {
+  animation: success-glow-pulse 0.8s ease-in-out infinite;
+}
+
 /* ── PWA standalone ─────────────────────────────────────────────────────── */
 @media (display-mode: standalone) {
   body { padding-top: env(safe-area-inset-top); }

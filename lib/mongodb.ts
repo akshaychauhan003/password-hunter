@@ -30,6 +30,8 @@ const HistorySchema = new mongoose.Schema({
   totalAttempts:       { type: Number, required: true },
   timeTakenMs:         { type: Number, required: true },
   modeUsed:            { type: String, required: true },
+  discoveryMode:       { type: String, default: 'open' },
+  eyeState:            { type: String, default: 'open' },
   difficultyLabel:     { type: String, required: true },
   difficultyScore:     { type: Number, default: 0 },
   estimatedCrackTime:  { type: String, default: '' },

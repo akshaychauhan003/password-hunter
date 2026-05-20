@@ -9,10 +9,13 @@ import { useMobile, useApkAvailable } from '@/hooks/useMobile';
 import { useSound } from '@/hooks/useSound';
 import { CyberButton, CyberInput, CyberCard, StatBadge } from '@/components/ui/CyberUI';
 import TerminalConsole from '@/components/simulation/TerminalConsole';
+import AttemptStream from '@/components/simulation/AttemptStream';
 import StrengthPanel from '@/components/simulation/StrengthPanel';
 import SettingsPanel from '@/components/panels/SettingsPanel';
 import HistoryPanel from '@/components/panels/HistoryPanel';
 import BootScreen from '@/components/effects/BootScreen';
+import EyeToggle from '@/components/effects/EyeToggle';
+import { useDiscoveryMode } from '@/hooks/useDiscoveryMode';
 
 const ParticleCanvas = dynamic(() => import('@/components/effects/ParticleCanvas'), { ssr: false });
 
@@ -48,8 +51,9 @@ export default function HomePage() {
   // Incremented after simulation completes so HistoryPanel re-fetches
   const [historyKey, setHistoryKey] = useState(0);
 
-  const { state, logs, start, pause, resume, stop, reset } = useSimulation();
+  const { state, logs, attemptLines, start, pause, resume, stop, reset } = useSimulation();
   const { charsetMode, simSpeed, customCharset } = useAppStore();
+  const { mode: discoveryMode, toggle: toggleEye, isEyeOpen } = useDiscoveryMode();
   const { isInstallable, install } = usePWA();
   const isMobile = useMobile();
   const apkAvailable = useApkAvailable();
@@ -92,7 +96,7 @@ export default function HomePage() {
   const handleStart = () => {
     if (!password) return;
     sound.playClick();
-    start(password, charsetMode, simSpeed, customCharset);
+    start(password, charsetMode, simSpeed, customCharset, discoveryMode);
   };
 
   const handleReset = () => {
@@ -114,19 +118,25 @@ export default function HomePage() {
 
             {/* ── Header ── */}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}
-              className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
+              className="flex items-center justify-between mb-8 flex-wrap gap-4">
+              <motion.div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg border border-neon-green/40 flex items-center justify-center text-lg shadow-neon-green"
                   style={{ color: 'var(--theme-primary)', borderColor: 'var(--theme-border)' }}>
                   🔐
                 </div>
                 <div>
                   <p className="text-[10px] font-mono text-neon-cyan/60 tracking-widest">EDUCATIONAL TOOL</p>
-                  <p className="text-xs font-mono text-white/30">Cybersecurity Simulator v1.0</p>
+                  <p className="text-xs font-mono text-white/30">Cybersecurity Simulator v2.0</p>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="flex items-center gap-2 flex-wrap justify-end">
+              <motion.div className="flex items-center gap-2 flex-wrap justify-end">
+                <EyeToggle
+                  isOpen={isEyeOpen}
+                  onToggle={toggleEye}
+                  disabled={state.isRunning}
+                />
+
                 {/* PWA Install */}
                 {isInstallable && (
                   <CyberButton variant="cyan" size="sm" onClick={() => { sound.playClick(); install(); }}>
@@ -153,7 +163,7 @@ export default function HomePage() {
                 <CyberButton variant="ghost" size="sm" onClick={() => { sound.playClick(); setShowSettings(true); }}>
                   ⚙
                 </CyberButton>
-              </div>
+              </motion.div>
             </motion.div>
 
             {/* ── Android APK download panel ── */}
@@ -322,7 +332,7 @@ export default function HomePage() {
                     <div className="flex justify-between mt-2">
                       <span className="text-[11px] font-mono text-white/30">{password.length} characters</span>
                       <span className="text-[11px] font-mono text-white/30">
-                        Mode: {charsetMode} · Speed: {simSpeed}
+                        Mode: {charsetMode} · Speed: {simSpeed} · Eye: {isEyeOpen ? 'OPEN' : 'BLIND'}
                       </span>
                     </div>
 
@@ -366,18 +376,31 @@ export default function HomePage() {
                           state.currentAttempt.split('').map((ch, idx) => {
                             const isActive = !state.isComplete && idx === state.activeIndex;
                             const isLocked = state.isComplete || idx < state.activeIndex;
-                            const isPlaceholder = !state.isComplete && idx > state.activeIndex;
+                            const isPlaceholder = ch === '_';
+                            const isBlind = state.discoveryMode === 'blind';
 
                             return (
                               <span
                                 key={`${ch}-${idx}`}
-                                className={`inline-block transition-colors duration-200 ${isActive ? 'text-neon-cyan scale-[1.05] drop-shadow-neon-cyan' : ''} ${isLocked ? 'text-neon-green' : ''} ${isPlaceholder ? 'text-white/30' : ''}`}>
+                                className={`inline-block transition-all duration-150 ${
+                                  isActive
+                                    ? 'text-neon-cyan scale-110 drop-shadow-[0_0_8px_var(--theme-secondary)] animate-pulse'
+                                    : ''
+                                } ${isLocked && !isPlaceholder ? 'text-neon-green' : ''} ${
+                                  isPlaceholder ? 'text-white/25' : ''
+                                } ${isBlind && isActive ? 'matrix-flicker' : ''}`}>
                                 {ch}
                               </span>
                             );
                           })
                         ) : (
-                          <span className="text-white/30">{state.isComplete ? state.target : '—'}</span>
+                          <span className="text-white/30">
+                            {state.isComplete
+                              ? (state.discoveredPassword || state.target || '—')
+                              : state.discoveryMode === 'blind'
+                                ? '— blind scan pending —'
+                                : '—'}
+                          </span>
                         )}
                       </p>
                       <span className="text-2xl animate-blink" style={{ color: 'var(--theme-primary)' }}>█</span>
@@ -406,7 +429,12 @@ export default function HomePage() {
                         className="mt-4 p-4 rounded-lg bg-neon-green/10 border border-neon-green/40 text-center"
                         style={{ borderColor: 'var(--theme-border-active)', background: 'var(--theme-primary-faint)' }}>
                         <p className="font-mono font-bold text-lg theme-primary-text">✅ PASSWORD CRACKED</p>
-                        <p className="text-neon-cyan font-mono text-xl font-black mt-1">"{state.target}"</p>
+                        <p className="text-neon-cyan font-mono text-xl font-black mt-1">
+                          "{state.discoveredPassword || state.target}"
+                        </p>
+                        <p className="text-[10px] font-mono theme-muted-text mt-1">
+                          {state.discoveryMode === 'blind' ? '👁 Blind discovery — reconstructed via validation only' : '👁 Open eye — direct visibility'}
+                        </p>
                         <div className="flex justify-center gap-6 mt-3">
                           <StatBadge label="Attempts" value={fmt(state.attemptCount)} />
                           <StatBadge label="Time"     value={fmtMs(state.elapsedMs)} color="text-neon-amber" />
@@ -416,8 +444,15 @@ export default function HomePage() {
                   </CyberCard>
                 </motion.div>
 
-                {/* Terminal */}
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+                {/* Live attempt stream (blind) + system terminal */}
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="space-y-4">
+                  {(state.discoveryMode === 'blind' || attemptLines.length > 0) && (
+                    <AttemptStream
+                      lines={attemptLines}
+                      isRunning={state.isRunning}
+                      isComplete={state.isComplete && state.found}
+                    />
+                  )}
                   <TerminalConsole logs={logs} />
                 </motion.div>
               </div>

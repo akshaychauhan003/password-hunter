@@ -12,6 +12,8 @@ const HistorySchema = z.object({
   totalAttempts:      z.number().int().nonnegative(),
   timeTakenMs:        z.number().nonnegative(),
   modeUsed:           z.string(),
+  discoveryMode:      z.enum(['open', 'blind']).optional(),
+  eyeState:           z.enum(['open', 'closed']).optional(),
   difficultyLabel:    z.string(),
   difficultyScore:    z.number(),
   estimatedCrackTime: z.string(),
