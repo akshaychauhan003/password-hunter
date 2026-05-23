@@ -73,29 +73,27 @@ export function buildCombinationPlan(
 /** Count attempts until target is reached in lexicographic length order. */
 export function countAttemptsToReach(target: string, charset: string): number {
   const n = charset.length;
+  const targetLen = target.length;
+
+  // All lengths before the target's length
   let count = 0;
-
-  for (let len = 1; len <= target.length; len++) {
-    const indices = new Array(len).fill(0);
-    while (true) {
-      count++;
-      const candidate = indices.map((i: number) => charset[i]).join('');
-      if (candidate === target) return count;
-
-      let carry = true;
-      for (let i = len - 1; i >= 0 && carry; i--) {
-        indices[i]++;
-        if (indices[i] >= n) {
-          indices[i] = 0;
-        } else {
-          carry = false;
-        }
-      }
-      if (carry) break;
-    }
+  let pow = n;
+  for (let len = 1; len < targetLen; len++) {
+    count += pow;
+    pow *= n;
   }
 
-  return count;
+  // Position within strings of targetLen
+  let positionInLength = 0;
+  for (let i = 0; i < targetLen; i++) {
+    const charIdx = charset.indexOf(target[i]);
+    if (charIdx === -1) {
+      return count + positionInLength + 1;
+    }
+    positionInLength = positionInLength * n + charIdx;
+  }
+
+  return count + positionInLength + 1;
 }
 
 /** Odometer-style combination generator (length 1 → maxLength). */
